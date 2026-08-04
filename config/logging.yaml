@@ -1,0 +1,31 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  standard:
+    format: "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    formatter: standard
+    level: INFO
+    stream: ext://sys.stdout
+
+  file:
+    class: logging.handlers.TimedRotatingFileHandler
+    formatter: standard
+    level: DEBUG
+    filename: logs/swing-trader.log
+    when: midnight
+    backupCount: 30       # NFR 4.5: 30-day retention
+
+root:
+  level: INFO
+  handlers: [console, file]
+
+loggers:
+  swing_trader:
+    level: DEBUG
+    handlers: [console, file]
+    propagate: false

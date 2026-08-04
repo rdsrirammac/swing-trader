@@ -1,0 +1,53 @@
+# Market regime classification rules (MR-001, MR-002).
+# The regime detector (src/models/regime_detector.py) reads these thresholds
+# so they can be tuned without touching code.
+
+regimes:
+  strong_trend:
+    spy_adx_min: 25
+    vix_max: 20
+    sector_breadth_min_pct: 60
+
+  weak_trend:
+    spy_adx_min: 15
+    spy_adx_max: 25
+    vix_min: 20
+    vix_max: 25
+
+  range_bound:
+    spy_adx_max: 20
+    vix_max: 22
+    bb_width_max_pct: 10
+
+  high_volatility:
+    vix_min: 25
+    atr_expansion_pct_min: 150   # % of 20-day average ATR
+
+  earnings_season:
+    sp500_reporting_pct_min: 20
+    lookahead_weeks: 2
+
+transitions:
+  vix_spike_std_devs: 2
+  sector_rotation_days: 5
+  breadth_thrust_volume_pct: 90
+
+# Per-regime adjustments applied by RM-006 / MR-003
+regime_adjustments:
+  high_volatility:
+    position_size_multiplier: 0.5
+    stop_atr_multiple: 2.5
+    target_atr_multiple: 2.0
+    expected_hold_days_multiplier: 0.6
+  range_bound:
+    position_size_multiplier: 0.8
+    expected_hold_days_multiplier: 0.8
+  strong_trend:
+    position_size_multiplier: 1.0
+    expected_hold_days_multiplier: 1.2
+  weak_trend:
+    position_size_multiplier: 0.9
+    expected_hold_days_multiplier: 1.0
+  earnings_season:
+    position_size_multiplier: 0.7
+    expected_hold_days_multiplier: 0.7

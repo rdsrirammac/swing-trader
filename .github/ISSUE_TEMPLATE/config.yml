@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Roadmap / backlog
+    url: https://github.com/OWNER/swing-trader/blob/main/ROADMAP.md
+    about: Check the roadmap and known-gaps backlog before filing a new enhancement -- it may already be tracked.

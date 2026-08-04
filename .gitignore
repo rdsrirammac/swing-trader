@@ -1,0 +1,35 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# --- Secrets / config ---
+.env
+config/api_keys.yaml
+
+# --- Data / runtime ---
+cache/
+logs/
+backups/
+mlruns/
+mlartifacts/
+*.db
+*.sqlite3
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+
+# --- Streamlit ---
+.streamlit/secrets.toml

@@ -1,0 +1,152 @@
+# Main configuration for the Swing Trading system.
+# Values here are safe defaults per the SRS. Secrets belong in config/api_keys.yaml
+# (git-ignored, copy from api_keys.yaml.example) or environment variables / .env.
+
+app:
+  name: swing-trader
+  timezone: America/New_York
+  environment: development   # development | production
+
+database:
+  driver: postgresql+psycopg2
+  host: ${DB_HOST:-localhost}
+  port: ${DB_PORT:-5432}
+  name: ${POSTGRES_DB:-swing_trader}
+  user: ${POSTGRES_USER:-swing}
+  password: ${POSTGRES_PASSWORD:-swing}
+  sslmode: disable   # set to 'require' in production (NFR 4.4)
+
+cache:
+  redis_host: ${REDIS_HOST:-localhost}
+  redis_port: ${REDIS_PORT:-6379}
+  disk_cache_dir: ~/.swing-trader/cache/yfinance
+
+mlflow:
+  tracking_uri: ${MLFLOW_TRACKING_URI:-http://localhost:5000}
+  experiment_name: swing-trader-ensemble
+
+# --- 3.2 Ticker Universe & Auto-Backfill ---
+ticker_universe:
+  max_tickers: 50                 # NFR 4.3 scalability limit
+  min_avg_daily_volume: 1000000   # PF-002 liquidity floor
+  price_min: 10
+  price_max: 500
+  atr_pct_min: 0.015
+  atr_pct_max: 0.08
+  backfill_years: 1
+  intraday_days: 60
+  news_history_days: 90
+
+# --- 3.3 Data quality gate (TB-003) ---
+data_quality:
+  min_daily_bars: 200
+  min_feature_completeness: 0.80
+  max_staleness_trading_days: 2
+  max_missing_pct_batch: 0.05
+
+# --- 3.5 Market regime thresholds (also see config/regimes.yaml) ---
+regime:
+  vix_high_vol: 25
+  vix_weak_trend_upper: 25
+  atr_expansion_pct: 1.5
+
+# --- 3.6 Predictive modeling ---
+modeling:
+  targets:
+    - prob_3pct_up_5d
+    - prob_5pct_up_10d
+    - prob_10pct_up_21d
+    - expected_return_10d
+    - optimal_hold_days
+    - max_drawdown_10d
+  retrain_schedule_cron: "0 20 * * 0"   # Sunday 8pm ET, full retrain
+  daily_tune_schedule_cron: "30 18 * * 1-5"  # 6:30pm ET weekdays
+  optuna_trials: 50
+  walk_forward_test_days: 60
+  mape_improvement_threshold: 0.02
+  feature_importance_floor: 0.005
+
+# --- 3.7 Signal / rating engine ---
+rating:
+  strong_buy_score: 1.5
+  buy_score: 0.5
+  sell_score: -1.5
+  weak_sell_score: -0.5
+
+# --- 3.8 Risk management ---
+risk:
+  max_risk_per_trade_pct: 0.02       # RM-001
+  min_risk_per_trade_pct: 0.01
+  max_risk_per_trade_pct_ceiling: 0.03
+  max_single_position_pct: 0.10
+  max_portfolio_heat_pct: 0.20       # RM-002
+  max_sector_concentration_pct: 0.30 # RM-003
+  correlation_reject_threshold: 0.80 # RM-004
+  daily_drawdown_alert_pct: 0.05     # RM-005
+  weekly_drawdown_alert_pct: 0.10
+  drawdown_reduce_50_trigger_pct: 0.10
+  drawdown_reduce_75_trigger_pct: 0.15
+  high_vol_vix_threshold: 25         # RM-006
+  high_vol_size_multiplier: 0.5
+  high_vol_stop_atr_multiple: 2.5
+  high_vol_target_atr_multiple: 2.0
+  trailing_stop_activation_pct: 0.03 # RM-007
+  trailing_stop_atr_multiple: 1.5
+
+# --- Stop / target defaults (PF-004, SR-004) ---
+positions:
+  default_stop_atr_multiple: 2.0
+  target_1_atr_multiple: 2.0
+  target_2_atr_multiple: 3.5
+  trim_target_1_pct: 0.50
+
+# --- 3.9 Earnings blackout (SR-005, EC-004) ---
+earnings:
+  blackout_days_before: 5
+  suggest_close_days_before: 2
+  auto_close_on_earnings_day: false
+  warning_days: [10, 5, 1]
+
+# --- 3.10 Alerts ---
+alerts:
+  channels:
+    macos: true
+    email: true
+    sms: false
+  dedup_window_minutes: 240
+  quiet_hours:
+    enabled: false
+    start: "22:00"
+    end: "07:00"
+  min_rating_for_signal_alert: Buy
+
+# --- 3.11 Backtesting ---
+backtest:
+  train_window_min_months: 6
+  train_window_max_years: 3
+  test_window_days: 20
+  step_size_days: 5
+  commission_per_share: 0.01
+  slippage_pct: 0.0005
+  monte_carlo_runs: 1000
+  out_of_sample_months: 6
+
+# --- 5.1 Data retention ---
+retention:
+  intraday_days: 60
+  daily_prices_years: 3
+  features_years: 3
+  news_days: 365
+  predictions_years: 3
+  model_versions_keep: 10
+
+# --- Notification schedule anchors (Section 6.3) ---
+schedule:
+  premarket: "08:00"
+  midday: "12:00"
+  eod: "16:35"
+  feature_calc: "17:00"
+  predict: "18:30"
+  weekly_retrain: "Sun 20:00"
+  monthly_fundamentals: "1 06:00"
+  backup: "02:00"

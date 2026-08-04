@@ -1,0 +1,34 @@
+# Copy this file to config/api_keys.yaml (git-ignored) and fill in your keys.
+# yfinance requires NO key. Only NewsAPI is recommended (free tier) per the
+# yfinance-native refinement (SRS_Refinement_v1.1).
+#
+# Prefer macOS Keychain or a .env file over this yaml where possible (NFR 4.4).
+
+newsapi:
+  api_key: "YOUR_NEWSAPI_KEY_HERE"   # https://newsapi.org - free tier 100 req/day
+
+polygon:
+  api_key: ""    # optional fallback, not required with yfinance-native design
+
+finnhub:
+  api_key: ""    # optional fallback
+
+email:
+  smtp_host: "smtp.gmail.com"
+  smtp_port: 587
+  username: "you@example.com"
+  password: "APP_PASSWORD_NOT_YOUR_REAL_PASSWORD"
+  to_address: "you@example.com"
+
+sms:
+  provider: ""        # e.g. twilio, unused unless alerts.channels.sms = true
+  account_sid: ""
+  auth_token: ""
+  from_number: ""
+  to_number: ""
+
+broker:
+  # Future integration (TE-004). Leave blank until you enable live/paper broker trading.
+  alpaca_api_key: ""
+  alpaca_api_secret: ""
+  alpaca_base_url: "https://paper-api.alpaca.markets"

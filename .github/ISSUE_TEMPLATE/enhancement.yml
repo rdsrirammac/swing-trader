@@ -1,0 +1,49 @@
+name: Enhancement / SRS requirement
+description: A new feature, refinement, or SRS requirement that isn't fully implemented yet.
+title: "[Enhancement] "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: srs-section
+    attributes:
+      label: SRS section
+      description: Which functional area does this belong to? (see docs/SRS/Swing_Trading_SRS_v1.0.md Section 3). This drives the `srs:*` label so the backlog stays organized by requirement area.
+      options:
+        - "PF - Portfolio Management (3.1)"
+        - "TB - Ticker Universe & Auto-Backfill (3.2)"
+        - "DC - Data Collection & Ingestion (3.3)"
+        - "FE - Feature Engineering (3.4)"
+        - "MR - Market Regime Detection (3.5)"
+        - "PM - Predictive Modeling Engine (3.6)"
+        - "SR - Swing Signal Generation & Rating (3.7)"
+        - "RM - Risk Management & Position Sizing (3.8)"
+        - "TE - Trade Execution & Order Management (3.9)"
+        - "AL - Alert & Notification System (3.10)"
+        - "BT - Backtesting & Simulation (3.11)"
+        - "PA - Performance Analytics & Journaling (3.12)"
+        - "CC - Correlation & Concentration Analysis (3.13)"
+        - "EC - Earnings & Economic Calendar (3.14)"
+        - "DV - Dashboard & Visualization (3.15)"
+        - "Infra - DB / scheduling / CI / not requirement-specific"
+    validations:
+      required: true
+  - type: textarea
+    id: requirement
+    attributes:
+      label: What's missing or should change?
+      description: Reference the specific requirement ID if known (e.g. PM-004 step 8, RM-007). Link to the relevant SRS doc section if helpful.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does this matter for swing trading on this system?
+    validations:
+      required: false
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked ROADMAP.md and this isn't already tracked there
+          required: true

@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in swing-trader is broken (wrong calculation, crash, bad data).
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the system is affected?
+      options:
+        - Data collection (yfinance / NewsAPI / SEC EDGAR)
+        - Feature engineering
+        - Market regime detection
+        - Predictive modeling (LightGBM/LSTM/ARIMA-X/ensemble)
+        - Signal generation & rating
+        - Risk management
+        - Portfolio management / backfill
+        - Trade execution & journal
+        - Alerts & notifications
+        - Backtesting
+        - Performance analytics
+        - Earnings & economic calendar
+        - Dashboard
+        - CLI
+        - Scheduling (launchd)
+        - Database / schema
+        - Other / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what actually happened? Include exact error messages / tracebacks if any.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact CLI command / dashboard action / config that triggers it.
+      placeholder: |
+        1. `python -m swing_trader.cli backfill AAPL`
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: macOS version, Python version, output of `pip freeze | grep -E "yfinance|lightgbm|pandas"`.
+    validations:
+      required: false

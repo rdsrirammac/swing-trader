@@ -1,0 +1,56 @@
+version: "3.9"
+
+# Local infrastructure for the Swing Trading system.
+# Run: docker compose up -d
+# Postgres + TimescaleDB is the system of record (Section 6.1 of the SRS).
+# Redis is used for caching / rate-limit bookkeeping / job queues.
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: swing-trader-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-swing}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-swing}
+      POSTGRES_DB: ${POSTGRES_DB:-swing_trader}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - swing_db_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-swing}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: swing-trader-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - swing_redis_data:/data
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: swing-trader-mlflow
+    restart: unless-stopped
+    working_dir: /mlflow
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:///mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+    volumes:
+      - swing_mlflow_data:/mlflow
+
+volumes:
+  swing_db_data:
+  swing_redis_data:
+  swing_mlflow_data:

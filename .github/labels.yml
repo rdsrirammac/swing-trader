@@ -1,0 +1,69 @@
+# Label definitions, applied via scripts/seed_github_labels.sh (uses `gh label create`).
+# Edit here, then re-run the script -- it's idempotent (updates existing labels).
+
+- name: bug
+  color: "d73a4a"
+  description: Something isn't working
+- name: enhancement
+  color: "a2eeef"
+  description: SRS requirement not yet fully implemented
+- name: feature-request
+  color: "c5def5"
+  description: New capability outside the original SRS
+- name: good-first-issue
+  color: "7057ff"
+  description: Small, self-contained, good entry point
+- name: blocked
+  color: "b60205"
+  description: Waiting on another issue/PR
+- name: infra
+  color: "5319e7"
+  description: DB, scheduling, CI/CD, packaging
+
+# One label per SRS functional area (Section 3 of the SRS) so the backlog
+# can be filtered/sorted by requirement area.
+- name: "srs:PF"
+  color: "fbca04"
+  description: Portfolio Management (3.1)
+- name: "srs:TB"
+  color: "fbca04"
+  description: Ticker Universe & Auto-Backfill (3.2)
+- name: "srs:DC"
+  color: "fbca04"
+  description: Data Collection & Ingestion (3.3)
+- name: "srs:FE"
+  color: "fbca04"
+  description: Feature Engineering (3.4)
+- name: "srs:MR"
+  color: "fbca04"
+  description: Market Regime Detection (3.5)
+- name: "srs:PM"
+  color: "fbca04"
+  description: Predictive Modeling Engine (3.6)
+- name: "srs:SR"
+  color: "fbca04"
+  description: Swing Signal Generation & Rating (3.7)
+- name: "srs:RM"
+  color: "fbca04"
+  description: Risk Management & Position Sizing (3.8)
+- name: "srs:TE"
+  color: "fbca04"
+  description: Trade Execution & Order Management (3.9)
+- name: "srs:AL"
+  color: "fbca04"
+  description: Alert & Notification System (3.10)
+- name: "srs:BT"
+  color: "fbca04"
+  description: Backtesting & Simulation (3.11)
+- name: "srs:PA"
+  color: "fbca04"
+  description: Performance Analytics & Journaling (3.12)
+- name: "srs:CC"
+  color: "fbca04"
+  description: Correlation & Concentration Analysis (3.13)
+- name: "srs:EC"
+  color: "fbca04"
+  description: Earnings & Economic Calendar (3.14)
+- name: "srs:DV"
+  color: "fbca04"
+  description: Dashboard & Visualization (3.15)
