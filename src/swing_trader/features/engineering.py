@@ -229,6 +229,26 @@ def build_feature_row(
     return feature_dict
 
 
+def _to_python_scalar(value):
+    """Unwrap numpy scalar types (np.float64, np.int64, np.bool_, ...) to
+    native Python equivalents.
+
+    pandas/pandas_ta computations routinely hand back numpy scalars rather
+    than plain floats/ints/bools. SQLite (used in tests) accepts these
+    transparently, but psycopg2/PostgreSQL does not have a default adapter
+    for them -- it renders `np.float64(...)` as a literal in the SQL text
+    and the insert fails with "schema np does not exist". `.item()` is the
+    numpy-supported way to get the native Python type back; plain Python
+    values (and None) don't have `.item()` and pass through unchanged.
+    """
+    if value is not None and hasattr(value, "item"):
+        try:
+            return value.item()
+        except (ValueError, AttributeError):
+            return value
+    return value
+
+
 def upsert_feature_row(session: Session, ticker: str, as_of: dt.date, feature_dict: dict) -> StockFeature:
     """Insert or update the `StockFeature` row for (ticker, as_of)."""
     existing = session.execute(
@@ -239,7 +259,7 @@ def upsert_feature_row(session: Session, ticker: str, as_of: dt.date, feature_di
 
     for key, value in feature_dict.items():
         if hasattr(StockFeature, key):
-            setattr(row, key, value)
+            setattr(row, key, _to_python_scalar(value))
 
     if existing is None:
         session.add(row)
