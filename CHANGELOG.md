@@ -6,8 +6,21 @@ follows [SemVer](https://semver.org/) once tagged releases start.
 
 ## [Unreleased]
 
-Nothing yet -- this is where your next PR's summary goes, under
-"Added"/"Changed"/"Fixed" as appropriate.
+### Fixed
+- Backfill Phase 5 (feature warm-up) called `build_feature_row(session, ticker)`
+  with the wrong signature, so no `StockFeature` row was ever created and
+  every ticker failed the TB-003 quality gate on `feature_completeness`.
+  `_phase_features()` now fetches the real inputs (price/SPY/sector/VIX
+  history, `info`, recent news, analyst recommendations, options chain,
+  sector-ETF histories) and persists the computed row.
+- `YFinanceClient` cached empty/failed yfinance responses unconditionally,
+  so a single transient hiccup would poison the cache for its full TTL (up
+  to 24h) and make retries pointless. All six cached methods now skip
+  caching on an empty/`None` result.
+- `get_options_chain()` tried to disk-cache the raw (unpicklable)
+  `yfinance.ticker.Options` object every call, logging a spurious "cache
+  write failed" warning; it now caches a picklable `OptionsChain`
+  namedtuple with the same `.calls`/`.puts` shape.
 
 ## [0.1.0] - 2026-08-04
 

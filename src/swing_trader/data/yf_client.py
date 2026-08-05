@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import namedtuple
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,14 @@ except ImportError:  # pragma: no cover
 
 class YFinanceRateLimitError(Exception):
     pass
+
+
+# yfinance's `Ticker.option_chain()` returns an `Options` namedtuple whose
+# class isn't importable/picklable by diskcache ("Can't pickle
+# yfinance.ticker.Options"). Callers here only ever touch `.calls`/`.puts`
+# (both plain, picklable DataFrames), so we cache this equivalent, picklable
+# stand-in instead of the raw yfinance object.
+OptionsChain = namedtuple("OptionsChain", ["calls", "puts"])
 
 
 class YFinanceClient:
@@ -220,7 +229,7 @@ class YFinanceClient:
         if (calls is None or calls.empty) and (puts is None or puts.empty):
             logger.warning("get_options_chain(%s, %s) returned empty; not caching", ticker, expiration)
         else:
-            self._cache_set(cache_key, chain, 3600)
+            self._cache_set(cache_key, OptionsChain(calls=calls, puts=puts), 3600)
         return chain
 
     # -- news (DC-003, TB-001 Phase 5) ---------------------------------------

@@ -427,12 +427,92 @@ def _phase_options(session: Session, ticker: str) -> int:
 
 def _phase_features(session: Session, ticker: str) -> int:
     try:
-        from swing_trader.features.engineering import build_feature_row  # type: ignore
+        from swing_trader.features.engineering import (  # type: ignore
+            _map_sector_to_etf,
+            build_feature_row,
+            upsert_feature_row,
+        )
+        from swing_trader.features.macro import SECTOR_ETFS  # type: ignore
     except ImportError:
         logger.info("features.engineering not available yet; skipping feature warm-up for %s", ticker)
         return 0
+
     try:
-        build_feature_row(session, ticker)  # type: ignore[call-arg]
+        settings = get_settings()
+        client = YFinanceClient.instance()
+        period = f"{settings.get('ticker_universe.backfill_years', 1)}y"
+
+        price_history = client.get_history(ticker, period=period, interval="1d")
+        if price_history is None or price_history.empty:
+            logger.warning("feature warm-up: no price history for %s; skipping", ticker)
+            return 0
+        as_of = _to_naive_datetime(price_history.index[-1]).date()
+
+        spy_history = client.get_history("SPY", period=period, interval="1d")
+        vix_history = client.get_history("^VIX", period=period, interval="1d")
+
+        try:
+            info = client.get_info(ticker) or {}
+        except Exception as e:
+            logger.warning("feature warm-up: get_info failed for %s: %s", ticker, e)
+            info = {}
+
+        sector_etf_histories: dict = {}
+        for etf in SECTOR_ETFS:
+            try:
+                etf_df = client.get_history(etf, period=period, interval="1d")
+                if etf_df is not None and not etf_df.empty:
+                    sector_etf_histories[etf] = etf_df
+            except Exception as e:
+                logger.warning("feature warm-up: sector ETF %s history failed: %s", etf, e)
+
+        sector_etf = _map_sector_to_etf(info.get("sector"))
+        sector_history = sector_etf_histories.get(sector_etf) if sector_etf else None
+
+        news_rows_orm = session.execute(
+            select(NewsSentiment)
+            .where(NewsSentiment.ticker == ticker)
+            .order_by(NewsSentiment.published_at.desc())
+            .limit(50)
+        ).scalars().all()
+        news_rows = [
+            {
+                "headline": n.headline,
+                "published_at": n.published_at,
+                "sentiment_score": n.sentiment_score,
+            }
+            for n in news_rows_orm
+        ]
+
+        try:
+            recommendations_df = client.get_recommendations(ticker)
+        except Exception as e:
+            logger.warning("feature warm-up: recommendations fetch failed for %s: %s", ticker, e)
+            recommendations_df = None
+
+        options_chain = None
+        try:
+            expirations = client.get_option_expirations(ticker) or ()
+            if expirations:
+                options_chain = client.get_options_chain(ticker, expirations[0])
+        except Exception as e:
+            logger.warning("feature warm-up: options chain fetch failed for %s: %s", ticker, e)
+
+        feature_dict = build_feature_row(
+            ticker=ticker,
+            as_of=as_of,
+            price_history=price_history,
+            spy_history=spy_history,
+            sector_history=sector_history,
+            vix_history=vix_history,
+            info=info,
+            news_rows=news_rows,
+            recommendations_df=recommendations_df,
+            options_chain=options_chain,
+            sector_etf_histories=sector_etf_histories,
+        )
+        upsert_feature_row(session, ticker, as_of, feature_dict)
+        session.flush()
         return 1
     except Exception as e:
         logger.warning("feature warm-up failed for %s: %s", ticker, e)

@@ -15,11 +15,12 @@ functional areas) as refined by `docs/SRS/SRS_Refinement_v1.1_yfinance.md`
 ## Status
 
 v0.1 -- all 15 functional areas have a real implementation and 40 tests
-pass, but this has **not yet been run against real market data end-to-end**
-on a live Postgres/TimescaleDB instance. There is one known
-high-priority integration gap (backfill's feature warm-up phase) that
-blocks tickers from reaching `active` status until fixed -- see
-`ROADMAP.md` before you start using this for anything real.
+pass. It has now been run against real yfinance data end-to-end
+(`make add-ticker TICKER=AAPL` completes all 6 backfill phases), though
+not yet on a live Postgres/TimescaleDB instance (SQLite in tests only).
+See `ROADMAP.md` "Known Integration Gaps" for what's left, most notably:
+if a ticker fails the quality gate only on `feature_completeness`, install
+`pandas_ta` (17 of ~42 feature columns depend on it).
 
 ## Quickstart
 

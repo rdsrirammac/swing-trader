@@ -29,14 +29,18 @@ These were identified during the build and are seeded as GitHub issues
 (`scripts/seed_github_issues.sh`) -- check there for the live/closed
 status rather than this static list:
 
-1. **Backfill Phase 5 (features) signature mismatch** -- `_phase_features()`
-   calls `build_feature_row()` with the wrong arguments; feature rows never
-   actually get created during backfill today, so the TB-003 quality gate
-   always fails on `feature_completeness`. This is the single
-   highest-priority fix -- until it's resolved, no ticker will ever reach
-   `status=active` through the normal backfill flow. See
-   `tests/integration/test_backfill_pipeline.py`'s docstring for the
-   regression test that documents this.
+1. ~~**Backfill Phase 5 (features) signature mismatch**~~ -- **FIXED**
+   (2026-08-04). `_phase_features()` now fetches the real inputs
+   `build_feature_row()` needs (price/SPY/sector/VIX history, `info`,
+   recent `NewsSentiment` rows, analyst recommendations, the nearest
+   options chain, and all 11 SPDR sector-ETF histories) and persists the
+   result via `upsert_feature_row()`. See
+   `tests/integration/test_backfill_pipeline.py` for the updated
+   regression test. Note: reaching the TB-003 quality gate's default 0.80
+   `feature_completeness` bar still depends on `pandas_ta` being installed
+   (17 of ~42 columns) and on real per-ticker data quality -- if a ticker
+   is failing the gate only on completeness, check those first before
+   assuming another wiring bug.
 2. No persisted backtest run history (dashboard shows on-demand results only).
 3. Historical short interest unavailable via yfinance (current value only).
 4. FinBERT vs. VADER sentiment quality not yet evaluated on real data.
@@ -54,10 +58,22 @@ status rather than this static list:
     (hardcoded default of 3 in `analytics/behavioral.py`).
 13. No stop-loss change history -- `PA-004`'s stop-violation detection is
     an approximation.
+14. **yfinance client self-poisoning cache** -- **FIXED** (2026-08-04).
+    `YFinanceClient` used to cache empty/failed responses unconditionally
+    via `_cache_set()`, so a single transient hiccup would get treated as
+    "confirmed empty" for the full TTL (up to 24h) and every retry just
+    re-read the poisoned cache entry instead of hitting yfinance again.
+    Fixed via a `_is_empty()` guard before every cache write across all six
+    cached methods. Also fixed in the same pass: `get_options_chain()` was
+    trying to disk-cache the raw (unpicklable) `yfinance.ticker.Options`
+    object, logging a "cache write failed" warning on every call -- it now
+    caches an equivalent, picklable `OptionsChain` namedtuple instead.
 
 ## Next steps (priority order)
 
-1. Fix the backfill Phase 5 wiring (#1 above) -- unblocks everything downstream.
+1. ~~Fix the backfill Phase 5 wiring (#1 above)~~ -- done; re-run
+   `make add-ticker TICKER=AAPL` and confirm `feature_completeness` is
+   populated (install `pandas_ta` if the gate fails only on completeness).
 2. Run `make install && make infra-up && make init-db` on the real Mac
    Mini and backfill a handful of real tickers end-to-end; fix whatever
    yfinance edge cases show up (this was explicitly anticipated in
