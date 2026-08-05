@@ -5,26 +5,13 @@ backfill_historical_features.py` also uses (with a larger `days`) for the
 one-time bulk historical backfill needed before `predict` can train on a
 freshly-added ticker.
 
-`YFinanceClient` is fully mocked out via the same `FakeYFinanceClient` used
-by the backfill integration tests -- no network access, no real yfinance
-calls.
+`YFinanceClient` is fully mocked out via the shared `fake_yf` fixture
+(`tests/conftest.py`) -- no network access, no real yfinance calls.
 """
 from __future__ import annotations
 
-import pytest
-
-from swing_trader.data.yf_client import YFinanceClient
 from swing_trader.db.models import StockFeature
 from swing_trader.features.engineering import recalculate_recent_features
-
-from tests.integration.test_backfill_pipeline import FakeYFinanceClient
-
-
-@pytest.fixture()
-def fake_yf(monkeypatch):
-    fake = FakeYFinanceClient(n_days=260)
-    monkeypatch.setattr(YFinanceClient, "instance", staticmethod(lambda: fake))
-    return fake
 
 
 def test_recalculate_recent_features_writes_one_row_per_trading_day(db_session, fake_yf):
@@ -67,6 +54,8 @@ def test_recalculate_recent_features_is_point_in_time_correct(db_session, fake_y
 
 
 def test_recalculate_recent_features_handles_missing_price_history(db_session, monkeypatch):
+    from swing_trader.data.yf_client import YFinanceClient
+
     class _EmptyYF:
         def get_history(self, *a, **kw):
             import pandas as pd
