@@ -92,6 +92,24 @@ class YFinanceClient:
         except Exception as e:  # pragma: no cover
             logger.warning("cache write failed for %s: %s", key, e)
 
+    @staticmethod
+    def _is_empty(value: Any) -> bool:
+        """True if `value` looks like a failed/empty response that should
+        NOT be cached. yfinance occasionally returns an empty DataFrame,
+        empty dict, or empty list on a transient hiccup *without* raising an
+        exception -- if we cache that, every subsequent call (including
+        retries) just re-reads the poisoned cache entry instead of hitting
+        yfinance again, silently "confirming" a false failure for the full
+        TTL (up to 24h). Only genuinely non-empty results get cached.
+        """
+        if value is None:
+            return True
+        if isinstance(value, pd.DataFrame):
+            return value.empty
+        if isinstance(value, (dict, list, tuple, str)):
+            return len(value) == 0
+        return False
+
     # -- price data (DC-001, TB-001 Phase 1) --------------------------------
     def get_history(
         self, ticker: str, period: str = "1y", interval: str = "1d", prepost: bool = False
@@ -104,9 +122,10 @@ class YFinanceClient:
         t = yf.Ticker(ticker)
         df = self._with_retry(t.history, period=period, interval=interval, prepost=prepost)
         ttl = 3600 if interval in ("1m", "2m", "5m", "15m", "30m", "60m") else 86400
-    if df is not None and not df.empty:
-        self._cache_set(cache_key, df, ttl)
-    return df
+        if not self._is_empty(df):
+            self._cache_set(cache_key, df, ttl)
+        else:
+            logger.warning("get_history(%s, %s, %s) returned empty; not caching", ticker, period, interval)
         return df
 
     def get_batch_history(
@@ -126,7 +145,10 @@ class YFinanceClient:
             auto_adjust=True,
             prepost=False,
         )
-        self._cache_set(cache_key, data, 86400)
+        if not self._is_empty(data):
+            self._cache_set(cache_key, data, 86400)
+        else:
+            logger.warning("get_batch_history(%s) returned empty; not caching", tickers)
         return data
 
     # -- fundamentals (DC-002, TB-001 Phase 2) ------------------------------
@@ -137,7 +159,10 @@ class YFinanceClient:
             return cached
         t = yf.Ticker(ticker)
         info = self._with_retry(lambda: t.info)
-        self._cache_set(cache_key, info, 86400)
+        if not self._is_empty(info):
+            self._cache_set(cache_key, info, 86400)
+        else:
+            logger.warning("get_info(%s) returned empty; not caching", ticker)
         return info
 
     def get_quarterly_financials(self, ticker: str) -> pd.DataFrame:
@@ -168,7 +193,10 @@ class YFinanceClient:
             return cached
         t = yf.Ticker(ticker)
         rec = self._with_retry(lambda: t.recommendations)
-        self._cache_set(cache_key, rec, 86400)
+        if not self._is_empty(rec):
+            self._cache_set(cache_key, rec, 86400)
+        else:
+            logger.warning("get_recommendations(%s) returned empty; not caching", ticker)
         return rec
 
     def get_upgrades_downgrades(self, ticker: str) -> pd.DataFrame:
@@ -187,7 +215,12 @@ class YFinanceClient:
             return cached
         t = yf.Ticker(ticker)
         chain = self._with_retry(t.option_chain, expiration)
-        self._cache_set(cache_key, chain, 3600)
+        calls = getattr(chain, "calls", None)
+        puts = getattr(chain, "puts", None)
+        if (calls is None or calls.empty) and (puts is None or puts.empty):
+            logger.warning("get_options_chain(%s, %s) returned empty; not caching", ticker, expiration)
+        else:
+            self._cache_set(cache_key, chain, 3600)
         return chain
 
     # -- news (DC-003, TB-001 Phase 5) ---------------------------------------
@@ -198,7 +231,10 @@ class YFinanceClient:
             return cached
         t = yf.Ticker(ticker)
         news = self._with_retry(lambda: t.news)
-        self._cache_set(cache_key, news, 900)
+        if not self._is_empty(news):
+            self._cache_set(cache_key, news, 900)
+        else:
+            logger.warning("get_news(%s) returned empty; not caching", ticker)
         return news
 
     # -- corporate actions / holders -----------------------------------------
