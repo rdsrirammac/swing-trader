@@ -1,4 +1,4 @@
-.PHONY: install infra-up infra-down init-db add-ticker backfill predict backtest \
+.PHONY: install infra-up infra-down init-db add-ticker backfill backfill-features predict list-predictions backtest \
         dashboard test lint fmt typecheck run-premarket run-midday run-eod \
         run-predict run-weekly-retrain run-backup schedule-install schedule-uninstall clean
 
@@ -41,8 +41,18 @@ list-portfolio:
 backfill:
 	$(BIN)/python -m swing_trader.cli backfill $(TICKER)
 
+## One-time bulk historical feature backfill (run once per ticker after
+## add-ticker, so `predict` has enough training history immediately instead
+## of waiting weeks for the nightly EOD job to accumulate it). TICKERS is
+## optional space-separated list; defaults to all active tickers.
+backfill-features:
+	$(BIN)/python scripts/backfill_historical_features.py $(TICKERS)
+
 predict:
 	$(BIN)/python -m swing_trader.cli predict
+
+list-predictions:
+	$(BIN)/python -m swing_trader.cli list-predictions $(if $(TICKERS),--tickers "$(TICKERS)",)
 
 backtest:
 	$(BIN)/python -m swing_trader.cli backtest $(ARGS)

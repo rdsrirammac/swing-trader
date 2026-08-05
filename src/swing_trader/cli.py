@@ -309,6 +309,84 @@ def predict_cmd(tickers: str | None) -> None:
         )
 
 
+@cli.command("list-predictions")
+@click.option("--tickers", default=None, help="Comma-separated tickers (default: all with a prediction).")
+@click.option(
+    "--as-of", default=None,
+    help="Date YYYY-MM-DD (default: each ticker's most recent prediction).",
+)
+def list_predictions_cmd(tickers: str | None, as_of: str | None) -> None:
+    """Print predictions + ratings written by `predict` (PM/SR).
+
+    No dashboard page surfaces this yet (see ROADMAP.md) -- this is the
+    fastest way to see what `predict` actually produced.
+    """
+    from swing_trader.db.models import Prediction, SignalRating
+
+    as_of_date: dt.date | None = None
+    if as_of:
+        try:
+            as_of_date = dt.date.fromisoformat(as_of)
+        except ValueError as exc:
+            _friendly_error(exc, "Dates must be in YYYY-MM-DD format.")
+            return
+
+    try:
+        with session_scope() as db:
+            query = db.query(Prediction)
+            if tickers:
+                ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+                query = query.filter(Prediction.ticker.in_(ticker_list))
+
+            if as_of_date:
+                rows = query.filter(Prediction.as_of == as_of_date).order_by(Prediction.ticker).all()
+            else:
+                # Each ticker's single most recent prediction.
+                all_preds = query.order_by(Prediction.ticker, Prediction.as_of.desc()).all()
+                seen: set[str] = set()
+                rows = []
+                for p in all_preds:
+                    if p.ticker not in seen:
+                        rows.append(p)
+                        seen.add(p.ticker)
+                rows.sort(key=lambda p: p.ticker)
+
+            if not rows:
+                click.secho(
+                    "No predictions found. Run `make predict` first -- it needs enough feature "
+                    "history per ticker (`make backfill-features TICKERS=...` if you haven't).",
+                    fg="yellow",
+                )
+                return
+
+            header = (
+                f"{'TICKER':<8}{'AS OF':<12}{'REGIME':<15}{'EXP RET 10D':>12}"
+                f"{'P(5%UP10D)':>12}{'CI RANGE':>18}{'RATING':>14}{'SCORE':>8}"
+            )
+            click.echo(f"\nPredictions ({len(rows)}):")
+            click.echo("-" * len(header))
+            click.echo(header)
+            click.echo("-" * len(header))
+            for p in rows:
+                rating = db.query(SignalRating).filter(SignalRating.prediction_id == p.id).first()
+                exp_ret = f"{p.expected_return_10d:+.2%}" if p.expected_return_10d is not None else "n/a"
+                prob = f"{p.prob_5pct_up_10d:.1%}" if p.prob_5pct_up_10d is not None else "n/a"
+                ci = (
+                    f"{p.ci_lower:+.1%} / {p.ci_upper:+.1%}"
+                    if p.ci_lower is not None and p.ci_upper is not None
+                    else "n/a"
+                )
+                regime = p.regime.value if p.regime else "n/a"
+                rating_str = rating.rating.value if rating else "n/a"
+                score_str = f"{rating.score:.1f}" if rating else "n/a"
+                click.echo(
+                    f"{p.ticker:<8}{p.as_of.isoformat():<12}{regime:<15}{exp_ret:>12}"
+                    f"{prob:>12}{ci:>18}{rating_str:>14}{score_str:>8}"
+                )
+    except Exception as exc:
+        _friendly_error(exc, "Check DB connectivity (`make infra-up`) and that `make predict` has run.")
+
+
 # --- Backtest (BT) -----------------------------------------------------------
 
 @cli.command("backtest")
