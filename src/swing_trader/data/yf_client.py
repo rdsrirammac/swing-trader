@@ -104,7 +104,9 @@ class YFinanceClient:
         t = yf.Ticker(ticker)
         df = self._with_retry(t.history, period=period, interval=interval, prepost=prepost)
         ttl = 3600 if interval in ("1m", "2m", "5m", "15m", "30m", "60m") else 86400
+    if df is not None and not df.empty:
         self._cache_set(cache_key, df, ttl)
+    return df
         return df
 
     def get_batch_history(
