@@ -265,3 +265,100 @@ def upsert_feature_row(session: Session, ticker: str, as_of: dt.date, feature_di
         session.add(row)
 
     return row
+
+
+def _as_date(ts) -> dt.date:
+    return ts.date() if hasattr(ts, "date") else ts
+
+
+def recalculate_recent_features(session: Session, ticker: str, days: int = 60) -> int:
+    """TB-005 extension point: recompute and upsert `StockFeature` rows for
+    the last `days` trading days of `ticker`'s stored price history.
+
+    This is what `portfolio.backfill.run_daily_incremental_update` (the EOD
+    job) calls every night to roll feature history forward; it's also used
+    directly (with a larger `days`) to backstop the model pipeline with
+    enough training history the first time a ticker is added, rather than
+    waiting weeks for it to accumulate one row a night. See
+    `scripts/backfill_historical_features.py` for that one-time bulk path.
+
+    Point-in-time correctness matters here: for each date being recomputed,
+    only price/benchmark data up to and including that date is used (all
+    history inputs are sliced with `.loc[:ts]`), so technical/relative-
+    strength/volatility/macro indicators never leak future information into
+    a past day's row. That matters for `models.pipeline.build_context_from_db`'s
+    walk-forward training frame, not just for "today"'s live features.
+
+    News/analyst-recommendations/options-chain inputs don't have a clean
+    historical per-day snapshot in this schema (yfinance and our own tables
+    only ever give an "as of now" view of those), so every recomputed row
+    leaves those fields at `build_feature_row`'s defaults (None) rather than
+    reusing today's live snapshot, which would be a look-ahead leak. Only
+    the live per-ticker backfill path (`portfolio.backfill._phase_features`)
+    populates those fields, for today's row specifically.
+    """
+    from swing_trader.config import get_settings
+    from swing_trader.data.yf_client import YFinanceClient
+    from swing_trader.features.macro import SECTOR_ETFS
+
+    settings = get_settings()
+    client = YFinanceClient.instance()
+    period = f"{settings.get('ticker_universe.backfill_years', 1)}y"
+
+    price_history = client.get_history(ticker, period=period, interval="1d")
+    if price_history is None or price_history.empty:
+        logger.warning("recalculate_recent_features: no price history for %s", ticker)
+        return 0
+
+    spy_history = client.get_history("SPY", period=period, interval="1d")
+    vix_history = client.get_history("^VIX", period=period, interval="1d")
+
+    try:
+        info = client.get_info(ticker) or {}
+    except Exception as e:
+        logger.warning("recalculate_recent_features: get_info failed for %s: %s", ticker, e)
+        info = {}
+
+    sector_etf_histories: dict = {}
+    for etf in SECTOR_ETFS:
+        try:
+            etf_df = client.get_history(etf, period=period, interval="1d")
+            if etf_df is not None and not etf_df.empty:
+                sector_etf_histories[etf] = etf_df
+        except Exception as e:
+            logger.warning("recalculate_recent_features: sector ETF %s history failed: %s", etf, e)
+
+    sector_etf = _map_sector_to_etf(info.get("sector"))
+    sector_history_full = sector_etf_histories.get(sector_etf) if sector_etf else None
+
+    dates = list(price_history.index[-days:])
+    written = 0
+    for ts in dates:
+        as_of = _as_date(ts)
+        try:
+            sliced_price = price_history.loc[:ts]
+            sliced_spy = spy_history.loc[:ts] if spy_history is not None and not spy_history.empty else spy_history
+            sliced_vix = vix_history.loc[:ts] if vix_history is not None and not vix_history.empty else vix_history
+            sliced_sector = sector_history_full.loc[:ts] if sector_history_full is not None else None
+            sliced_sector_etfs = {etf: df.loc[:ts] for etf, df in sector_etf_histories.items()}
+
+            feature_dict = build_feature_row(
+                ticker=ticker,
+                as_of=as_of,
+                price_history=sliced_price,
+                spy_history=sliced_spy,
+                sector_history=sliced_sector,
+                vix_history=sliced_vix,
+                info=info,
+                news_rows=[],
+                recommendations_df=None,
+                options_chain=None,
+                sector_etf_histories=sliced_sector_etfs,
+            )
+            upsert_feature_row(session, ticker, as_of, feature_dict)
+            written += 1
+        except Exception as e:
+            logger.warning("recalculate_recent_features: failed for %s on %s: %s", ticker, as_of, e)
+
+    session.flush()
+    return written
