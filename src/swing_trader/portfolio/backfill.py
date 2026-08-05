@@ -583,17 +583,25 @@ def check_quality_gate(session: Session, ticker: str) -> tuple[bool, list[str]]:
     if latest_price is None or not data_freshness_ok(latest_price.ts, max_staleness):
         reasons.append("latest price data is stale or missing")
 
-    critical_failures = session.execute(
-        select(func.count())
-        .select_from(BackfillJob)
-        .where(
-            BackfillJob.ticker == ticker,
-            BackfillJob.phase.in_(_CRITICAL_PHASES),
-            BackfillJob.status == "failed",
+    # Only the *most recent* attempt at each critical phase counts here --
+    # not an all-time failure count. A ticker that failed a few times in the
+    # past (e.g. during a transient yfinance/network issue, or before a bug
+    # fix landed) but has since had a clean, successful re-run should not be
+    # permanently blocked from `active` status by that history.
+    stale_critical_phases: list[str] = []
+    for phase in _CRITICAL_PHASES:
+        latest_job = session.execute(
+            select(BackfillJob)
+            .where(BackfillJob.ticker == ticker, BackfillJob.phase == phase)
+            .order_by(BackfillJob.id.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if latest_job is not None and latest_job.status == "failed":
+            stale_critical_phases.append(phase)
+    if stale_critical_phases:
+        reasons.append(
+            f"most recent attempt at critical phase(s) failed: {', '.join(stale_critical_phases)}"
         )
-    ).scalar_one()
-    if critical_failures:
-        reasons.append(f"{critical_failures} critical (price) backfill phase failure(s)")
 
     passed = len(reasons) == 0
 

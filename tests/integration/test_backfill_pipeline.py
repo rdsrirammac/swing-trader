@@ -167,6 +167,56 @@ def test_run_backfill_ingests_price_data_and_tracks_phases(db_session, fake_yf, 
     assert ticker_row.status in (TickerStatus.ACTIVE, TickerStatus.FAILED)
 
 
+def test_quality_gate_ignores_stale_critical_failures(db_session, today):
+    """Regression test: a ticker that failed the critical price phase in the
+    past (e.g. during the yfinance self-poisoning-cache bug, or any
+    transient outage) but has since had a clean, successful re-run must not
+    be permanently blocked from `active` status by that old failure.
+    `check_quality_gate` should only look at the *most recent* attempt at
+    each critical phase, not an all-time failure count.
+    """
+    ticker = "STALEX"
+    db_session.add(TickerUniverse(ticker=ticker, status=TickerStatus.BACKFILLING))
+    db_session.flush()
+
+    # An old failed attempt, followed later by a successful one.
+    db_session.add(
+        BackfillJob(
+            ticker=ticker, phase="price", status="failed", attempt=3,
+            error_message="price validation failed: empty dataframe",
+            started_at=dt.datetime.utcnow() - dt.timedelta(days=5),
+            finished_at=dt.datetime.utcnow() - dt.timedelta(days=5),
+        )
+    )
+    db_session.flush()
+    db_session.add(
+        BackfillJob(
+            ticker=ticker, phase="price", status="done", attempt=1,
+            started_at=dt.datetime.utcnow(),
+            finished_at=dt.datetime.utcnow(),
+        )
+    )
+    db_session.flush()
+
+    # Enough fresh daily bars + a complete-enough feature row to pass the
+    # other two TB-003 checks, isolating this test to the critical-phase logic.
+    dates = pd.bdate_range(end=pd.Timestamp(today), periods=210)
+    for ts in dates:
+        db_session.add(
+            StockPrice(
+                ticker=ticker, ts=ts.to_pydatetime(), interval="1d",
+                open=100.0, high=101.0, low=99.0, close=100.5, volume=1_000_000,
+                source="yfinance",
+            )
+        )
+    db_session.add(StockFeature(ticker=ticker, ts=today, feature_completeness=0.95))
+    db_session.flush()
+
+    passed, reasons = check_quality_gate(db_session, ticker)
+    assert passed is True, reasons
+    assert reasons == []
+
+
 def test_screen_ticker_accepts_valid_candidate():
     ok, reason = screen_ticker(
         info={"regularMarketPrice": 150.0, "quoteType": "EQUITY"},
