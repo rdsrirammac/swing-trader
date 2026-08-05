@@ -29,13 +29,27 @@ Task = Literal["classification", "regression"]
 # ---------------------------------------------------------------------------
 
 class LightGBMModel:
-    """Wraps `lightgbm.LGBMClassifier` / `LGBMRegressor`."""
+    """Wraps `lightgbm.LGBMClassifier` / `LGBMRegressor`.
+
+    Reproducibility: unless the caller explicitly overrides them,
+    `random_state` and `deterministic=True` are always injected from
+    `modeling.random_seed` (default 42). Without this, LightGBM's own
+    internal RNG (bagging/feature subsampling) and multi-threaded histogram
+    building are non-deterministic by default -- identical training data
+    would otherwise produce a different model (and different predictions)
+    every time `.fit()` is called, which is exactly what was happening
+    across repeated `predict` runs before this was added.
+    """
 
     def __init__(self, task: Task = "classification", **lgbm_params):
         import lightgbm as lgb
 
+        from swing_trader.config import get_settings
+
         self.task = task
         self.params = dict(lgbm_params)
+        self.params.setdefault("random_state", get_settings().get("modeling.random_seed", 42))
+        self.params.setdefault("deterministic", True)
         self.model = (
             lgb.LGBMClassifier(**self.params)
             if task == "classification"

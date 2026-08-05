@@ -3,12 +3,23 @@
 Uses time-series-aware cross-validation (`TimeSeriesSplit`, NOT random
 k-fold) since swing-trading feature panels are temporally ordered and random
 folds would leak future information into training folds.
+
+Reproducibility: both Optuna's sampler and every LightGBM model trained
+during the search are seeded from `modeling.random_seed` (default 42).
+Without this, `optuna.create_study()`'s default `TPESampler` explores a
+different sequence of hyperparameter trials on every call (it seeds itself
+from system entropy), and each trial's `LGBMClassifier`/`LGBMRegressor` has
+its own unseeded internal RNG on top of that -- so `tune_lightgbm()` could
+return different `best_params` from run to run even given byte-identical
+`X`/`y`, which was the real root cause of predictions changing across
+`predict` runs on unchanged data.
 """
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
+from swing_trader.config import get_settings
 from swing_trader.logging_setup import get_logger
 
 logger = get_logger("models.tuner")
@@ -27,6 +38,7 @@ def tune_lightgbm(X: pd.DataFrame, y: pd.Series, task: str, n_trials: int = 50) 
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
+    seed = get_settings().get("modeling.random_seed", 42)
     is_classification = task == "classification"
     direction = "maximize" if is_classification else "minimize"
 
@@ -39,6 +51,8 @@ def tune_lightgbm(X: pd.DataFrame, y: pd.Series, task: str, n_trials: int = 50) 
             "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
             "subsample": trial.suggest_float("subsample", 0.5, 1.0),
             "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
+            "random_state": seed,
+            "deterministic": True,
         }
 
         n_splits = min(5, max(2, len(X) // 30))
@@ -71,7 +85,8 @@ def tune_lightgbm(X: pd.DataFrame, y: pd.Series, task: str, n_trials: int = 50) 
 
         return float(np.mean(scores)) if scores else (0.5 if is_classification else float("inf"))
 
-    study = optuna.create_study(direction=direction)
+    sampler = optuna.samplers.TPESampler(seed=seed)
+    study = optuna.create_study(direction=direction, sampler=sampler)
     study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
 
     logger.info("tune_lightgbm: best value=%.5f params=%s", study.best_value, study.best_params)

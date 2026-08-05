@@ -270,6 +270,8 @@ def retry_backfill_cmd(ticker: str) -> None:
 @click.option("--tickers", default=None, help="Comma-separated tickers (default: all active tickers).")
 def predict_cmd(tickers: str | None) -> None:
     """Run the daily self-tuning prediction pipeline (PM)."""
+    from swing_trader.db.models import Prediction
+
     pipeline = _optional_import("swing_trader.models.pipeline")
     if pipeline is None or not hasattr(pipeline, "run_daily_self_tuning_pipeline"):
         _not_available("predict", "swing_trader.models.pipeline.run_daily_self_tuning_pipeline")
@@ -300,7 +302,38 @@ def predict_cmd(tickers: str | None) -> None:
                 return
             click.echo(f"Running prediction pipeline for {len(ticker_list)} ticker(s)...")
             pipeline.run_daily_self_tuning_pipeline(ticker_list, context)
-            click.secho("Prediction pipeline complete.", fg="green")
+
+            # `run_daily_self_tuning_pipeline` deliberately swallows its own
+            # per-step exceptions (regime/drift/tuning/training/prediction
+            # all individually try/except + log-and-continue) and never
+            # raises -- it can legitimately do nothing at all and still
+            # reach the end of the function. Report what actually landed in
+            # the DB instead of an unconditional success message, which was
+            # previously indistinguishable from "silently wrote nothing."
+            written = (
+                db.query(Prediction)
+                .filter(Prediction.ticker.in_(ticker_list), Prediction.as_of == context.as_of)
+                .count()
+            )
+            if written == 0:
+                click.secho(
+                    f"Pipeline ran but wrote 0 Prediction rows for {len(ticker_list)} ticker(s) as_of "
+                    f"{context.as_of}. This usually means candidate model training failed (not enough "
+                    "rows with a valid forward-return target, or a training exception) -- check the full "
+                    "log output for 'Candidate model training failed' or 'No trained model available'.",
+                    fg="yellow",
+                )
+            elif written < len(ticker_list):
+                click.secho(
+                    f"Prediction pipeline complete: {written}/{len(ticker_list)} ticker(s) got a prediction "
+                    f"as_of {context.as_of} (some were skipped -- check the log for details).",
+                    fg="yellow",
+                )
+            else:
+                click.secho(
+                    f"Prediction pipeline complete: {written}/{len(ticker_list)} ticker(s) as_of {context.as_of}.",
+                    fg="green",
+                )
     except Exception as exc:
         _friendly_error(
             exc,

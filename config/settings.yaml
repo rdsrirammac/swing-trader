@@ -65,6 +65,13 @@ modeling:
   walk_forward_test_days: 60
   mape_improvement_threshold: 0.02
   feature_importance_floor: 0.005
+  # Fixed seed for Optuna's sampler and every LightGBM model trained in the
+  # pipeline (hyperparameter search trials, walk-forward validation, and the
+  # final candidate) -- without this, identical training data produces a
+  # genuinely different model (and therefore different predictions) on every
+  # `predict` run, since neither Optuna's TPESampler nor LightGBM itself is
+  # deterministic by default.
+  random_seed: 42
 
 # --- 3.7 Signal / rating engine ---
 rating:
